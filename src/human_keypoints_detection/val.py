@@ -6,6 +6,7 @@ import math
 import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+import warnings
 
 import torch
 
@@ -14,6 +15,11 @@ from human_keypoints_detection.models.with_mobilenet import PoseEstimationWithMo
 from human_keypoints_detection.modules.keypoints import extract_keypoints, group_keypoints
 from human_keypoints_detection.modules.load_state import load_state
 
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+warnings.filterwarnings("ignore")
+
+class ImageNotFoundWarning(UserWarning):
+    pass
 
 def run_coco_eval(gt_file_path, dt_file_path):
     annotation_type = 'keypoints'
@@ -112,7 +118,10 @@ def infer(net, img, scales, base_height, stride, pad_value=(0, 0, 0), img_mean=(
 
 
 def evaluate(labels, output_name, images_folder, net, multiscale=False, visualize=False):
-    net = net.cuda().eval()
+    import os
+    import warnings
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    net = net.to(device).eval()
     base_height = 368
     scales = [1]
     if multiscale:
@@ -122,8 +131,13 @@ def evaluate(labels, output_name, images_folder, net, multiscale=False, visualiz
     dataset = CocoValDataset(labels, images_folder)
     coco_result = []
     for sample in dataset:
+        if sample is None:
+            continue
         file_name = sample['file_name']
         img = sample['img']
+        if img is None or (isinstance(img, np.ndarray) and img.size == 0):
+            warnings.warn(f"图片 {file_name} 未找到或无法读取，已跳过。", ImageNotFoundWarning)
+            continue
 
         avg_heatmaps, avg_pafs = infer(net, img, scales, base_height, stride)
 
@@ -157,6 +171,10 @@ def evaluate(labels, output_name, images_folder, net, multiscale=False, visualiz
 
     with open(output_name, 'w') as f:
         json.dump(coco_result, f, indent=4)
+
+    if len(coco_result) == 0:
+        print("没有任何推理结果，可能是图片数量太少或全部图片缺失，跳过COCO评测。")
+        return
 
     run_coco_eval(labels, output_name)
 

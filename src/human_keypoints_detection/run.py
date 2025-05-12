@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 import time
+import warnings
 
 from human_keypoints_detection.models.with_mobilenet import PoseEstimationWithMobileNet
 from human_keypoints_detection.modules.keypoints import extract_keypoints, group_keypoints
@@ -174,6 +175,9 @@ def run_demo(net, image_provider, height_size, cpu, smooth, image_path, show_hea
         cv2.namedWindow('PAFs', cv2.WINDOW_NORMAL)
 
     for img in image_provider:
+        if img is None or (isinstance(img, np.ndarray) and img.size == 0):
+            warnings.warn("图片未找到或无法读取，已跳过。");
+            continue
         start_time = time.time()
         orig_img = img.copy()
         heatmaps, pafs, scale, pad = infer_fast(net, img, height_size, stride, upsample_ratio, cpu)

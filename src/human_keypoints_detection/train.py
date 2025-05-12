@@ -1,6 +1,7 @@
 import argparse
 import cv2
 import os
+import warnings
 
 import torch
 from torch.nn import DataParallel
@@ -24,6 +25,7 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
           num_workers, checkpoint_path, weights_only, from_mobilenet, checkpoints_folder, log_after,
           val_labels, val_images_folder, val_output_name, checkpoint_after, val_after, model):
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = PoseEstimationWithMobileNet(num_refinement_stages)
 
     print("Loading Dataset...")
@@ -74,13 +76,17 @@ def train(prepared_train_labels, train_images_folder, num_refinement_stages, bas
                 current_epoch = checkpoint['current_epoch']
 
     print("Start Training...")
-    net = DataParallel(net).cuda()
+    net = DataParallel(net).to(device)
     net.train()
     for epochId in range(current_epoch, 280):
         # scheduler.step()
         total_losses = [0, 0] * (num_refinement_stages + 1)  # heatmaps loss, paf loss per stage
         batch_per_iter_idx = 0
         for batch_data in train_loader:
+            # 检查图片和标注是否有效
+            if batch_data['image'] is None or (hasattr(batch_data['image'], 'size') and batch_data['image'].size(0) == 0):
+                warnings.warn("批次中有图片未找到或无效，已跳过。")
+                continue
             if batch_per_iter_idx == 0:
                 optimizer.zero_grad()
 

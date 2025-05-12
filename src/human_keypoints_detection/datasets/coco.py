@@ -36,7 +36,10 @@ class CocoTrainDataset(Dataset):
         self._paf_thickness = paf_thickness
         self._transform = transform
         with open(labels, 'rb') as f:
-            self._labels = pickle.load(f)
+            all_labels = pickle.load(f)
+        # 只保留images文件夹下实际存在的图片的标注
+        all_image_files = set(os.listdir(images_folder))
+        self._labels = [label for label in all_labels if label['img_paths'] in all_image_files]
 
     def __getitem__(self, idx):
         label = copy.deepcopy(self._labels[idx])  # label modified in transform
@@ -179,15 +182,24 @@ class CocoValDataset(Dataset):
             self._labels = json.load(f)
         self._images_folder = images_folder
 
+        # 只保留images文件夹下实际存在的图片
+        all_image_files = set(os.listdir(images_folder))
+        file_name_to_image = {img['file_name']: img for img in self._labels['images']}
+        self._valid_images = []
+        for file_name in all_image_files:
+            if file_name in file_name_to_image:
+                self._valid_images.append(file_name_to_image[file_name])
+
     def __getitem__(self, idx):
-        file_name = self._labels['images'][idx]['file_name']
+        image_info = self._valid_images[idx]
+        file_name = image_info['file_name']
         img = cv2.imread(os.path.join(self._images_folder, file_name), cv2.IMREAD_COLOR)
         if img is None:
-            return self.__getitem__(idx + 1)
+            return None
         return {
             'img': img,
             'file_name': file_name
         }
 
     def __len__(self):
-        return len(self._labels['images'])
+        return len(self._valid_images)
